@@ -48,30 +48,45 @@ jobs:
         if: ${{ github.event.inputs.component == 'BackEnd' }}
         run: npx playwright test --grep @BackEnd --reporter=line,allure-playwright
         # Allure results will be in allure-results/
+  generate-report-and-deploy-to-gh-pages:
+    if: always()
+    needs: run-tests
+    runs-on: [nb-medium-x86]
+    timeout-minutes: 15
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v3
+      id: download-artifacts
+      if: always()
+      with:
+          name: allure-results
+          path: allure-results
 
-      - name: Get Allure history
-        uses: actions/checkout@v2
-        if: always()
-        continue-on-error: true
-        with:
+    - name: Get Allure history
+      uses: actions/checkout@v2
+      if: always()
+      continue-on-error: true
+      with:
           ref: gh-pages
           path: gh-pages
 
-      - name: Allure Report action from marketplace
-        uses: simple-elf/allure-report-action@master
-        if: always()
-        id: allure-report
-        with:
+    - name: Generate Allure Report
+      uses: carlosmanzatto/gen-allure@main
+      if: always()
+      id: allure-report
+      with:
           allure_results: allure-results
           gh_pages: gh-pages
           allure_report: allure-report
           allure_history: allure-history
+          keep_reports: 20
+          report_url: https://carlosmanzatto.github.io/playwright-reports/
 
-      - name: Deploy report to Github Pages
-        if: always()
-        uses: carlosmanzatto/deploy-gh-pages@main
-        with:
-          PERSONAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLISH_BRANCH: gh-pages
-          PUBLISH_DIR: allure-history
+    - name: Deploy report to Github Pages
+      if: always()
+      uses: carlosmanzatto/deploy-gh-pages@main
+      with:
+        PERSONAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PUBLISH_BRANCH: gh-pages
+        PUBLISH_DIR: allure-history
 
