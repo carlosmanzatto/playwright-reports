@@ -48,10 +48,10 @@ jobs:
         if: ${{ github.event.inputs.component == 'BackEnd' }}
         run: npx playwright test --grep @BackEnd --reporter=line,allure-playwright
         # Allure results will be in allure-results/
+
   generate-report-and-deploy-to-gh-pages:
     if: always()
-    needs: run-tests
-    runs-on: [nb-medium-x86]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
     - name: Download Artifacts
