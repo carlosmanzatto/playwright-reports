@@ -49,113 +49,29 @@ jobs:
         run: npx playwright test --grep @BackEnd --reporter=line,allure-playwright
         # Allure results will be in allure-results/
 
-      - name: Upload Allure Results Artifact
-        uses: actions/upload-artifact@v4
+      - name: Get Allure history
+        uses: actions/checkout@v2
         if: always()
-        with:
-          name: allure-results
-          path: allure-results/
-
-      # --- ALLURE HISTORY MANAGEMENT ---
-
-      # Step 1: Download previous Allure history from gh-pages
-      # This checks out the gh-pages branch into a temporary directory
-      - name: Download Allure history from gh-pages
-        uses: actions/checkout@v4
-        if: always()
-        continue-on-error: true # Allow this step to fail if gh-pages is empty or doesn't exist yet
+        continue-on-error: true
         with:
           ref: gh-pages
-          path: gh-pages-allure-content # Checkout gh-pages into a dedicated folder
-          # Ensure we only fetch the 'allure-history' folder if possible to save bandwidth,
-          # but `actions/checkout` doesn't directly support sparse checkout to a subfolder.
-          # We'll just check out the whole branch and then copy the specific folder.
+          path: gh-pages
 
-      # Step 2: Copy the downloaded history into the current allure-results
-      # This is critical for Allure to generate the new report with historical data.
-      - name: Copy previous Allure history to current results
-        if: always() # Always attempt to copy, even if the checkout above failed
-        run: |
-          # Check if the 'allure-history' directory exists from the gh-pages checkout
-          if [ -d "gh-pages-allure-content/allure-history" ]; then
-            echo "Previous Allure history found. Copying to allure-results/history..."
-            # Create the 'history' directory inside 'allure-results' if it doesn't exist
-            mkdir -p allure-results/history
-            # Copy the contents of the history folder
-            cp -r gh-pages-allure-content/allure-history/* allure-results/history/ || true
-          else
-            echo "No previous Allure history found at gh-pages-allure-content/allure-history. Generating report without historical data for this run."
-          fi
-
-      # Step 3: Generate Allure Report
-      # The simple-elf/allure-report-action will create 'allure-report' (the site)
-      # and 'allure-report/allure-history' (the new history for the next run).
-      - name: Generate Allure Report
-        uses: simple-elf/allure-report-action@v1.7
+      - name: Allure Report action from marketplace
+        uses: simple-elf/allure-report-action@master
         if: always()
         id: allure-report
         with:
           allure_results: allure-results
-          allure_report: allure-report # This will be the temporary directory for the new report
-          allure_history: allure-report/allure-history # IMPORTANT: This is the output path for the new history
-          keep_reports: 20
+          gh_pages: gh-pages
+          allure_report: allure-report
+          allure_history: allure-history
 
-      # --- DEPLOYMENT FOR SEQUENTIAL FOLDERS AND HISTORY ---
-
-      # Step 4: Prepare the root-level files for gh-pages (index.html redirect and global history)
-      - name: Prepare gh-pages root content
+      - name: Deploy report to Github Pages
         if: always()
-        run: |
-          # Create a temporary directory to hold the root-level files for gh-pages.
-          # This directory will contain the index.html redirect and the shared allure-history folder.
-          mkdir -p gh-pages-root-staged
+        uses: peaceiris/actions-gh-pages@v2
+        env:
+          PERSONAL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH_BRANCH: gh-pages
+          PUBLISH_DIR: allure-history
 
-          # Create an index.html file that redirects to the most recent report URL.
-          echo '<meta http-equiv="refresh" content="0; url=${{ github.run_number }}/index.html">' > gh-pages-root-staged/index.html
-          echo "Redirecting to latest Allure Report..." >> gh-pages-root-staged/index.html
-
-          # Copy the *newly generated* allure-history to the staged root directory.
-          # This 'allure-history' directory will be published at the root of gh-pages,
-          # making it accessible for the *next* workflow run.
-          if [ -d "allure-report/allure-history" ]; then
-            cp -r allure-report/allure-history gh-pages-root-staged/allure-history
-            echo "Copied newly generated Allure history to gh-pages-root-staged/allure-history."
-          else
-            echo "No new Allure history generated in allure-report/allure-history."
-          fi
-
-      # Step 5: Deploy the specific run's Allure Report to its numbered directory
-      - name: Deploy Allure Report for this run
-        if: always()
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: allure-report # This is the full generated report
-          destination_dir: ${{ github.run_number }} # Deploy into a subfolder named by run number
-          keep_files: true # Important: Do not clean the entire gh-pages branch, only add to it
-
-      # Step 6: Deploy the root files (index.html and the global allure-history)
-      # This step should run *after* the individual report is deployed, ensuring the history
-      # is updated with the latest run's data.
-      - name: Deploy Root Files and Global History to gh-pages
-        if: always()
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: gh-pages-root-staged # Contains index.html and the new allure-history
-          keep_files: true # Keep existing run-numbered folders, just update the root files
-          # IMPORTANT: We need to ensure that peaceiris/actions-gh-pages merges the content,
-          # not overwrites. 'keep_files: true' helps, but make sure the `publish_dir`
-          # structure is what you expect to merge correctly.
-
-      - name: Post the link to the report
-        if: always()
-        uses: Sibz/github-status-action@v1
-        with:
-          authToken: ${{secrets.GITHUB_TOKEN}}
-          context: 'Test report'
-          state: 'success'
-          sha: ${{ github.sha }}
-          target_url: https://carlosmanzatto.github.io/playwright-reports/${{ github.run_number }}
