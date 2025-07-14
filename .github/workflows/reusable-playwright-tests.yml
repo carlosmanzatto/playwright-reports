@@ -1,0 +1,141 @@
+name: Reusable Playwright Tests & Allure Report
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        type: string
+        required: true
+        default: 'All'
+        description: 'Specify which component tests to run (All, FrontEnd, BackEnd)'
+    # secrets: # This section is commented out, but GITHUB_TOKEN is required.
+    #   GITHUB_TOKEN:
+    #     required: true
+    #     description: 'GitHub token for deploying to GitHub Pages and setting commit status'
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    permissions: # Add these permissions for GitHub Pages deployment and status
+      contents: write # To push to gh-pages
+      pages: write # To deploy to GitHub Pages
+      id-token: write # For OIDC, might not be strictly needed for token but good practice
+      statuses: write # For posting the link to the report
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        if: ${{ github.event.inputs.Component == 'All' || github.event.inputs.Component == '' }}
+        run: npx playwright test --reporter=line,allure-playwright
+      - name: Run FrontEnd tests
+        if: ${{ github.event.inputs.Component == 'FrontEnd' }}
+        run: npx playwright test --grep @FrontEnd --reporter=line,allure-playwright
+      - name: Run BackEnd tests
+        if: ${{ github.event.inputs.Component == 'BackEnd' }}
+        run: npx playwright test --grep @BackEnd --reporter=line,allure-playwright
+        # this is the old command to run the tests:
+        # run: npx playwright test --reporter=line,allure-playwright
+        # Allure results will be in allure-results/
+
+      - name: Upload Allure Results Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results
+          path: allure-results/
+
+      # --- HISTORY MANAGEMENT ---
+      # This step needs adjustment. You are checking out gh-pages into 'gh-pages'
+      # but Allure needs the *history* folder from the previous report.
+      - name: Download Allure history from gh-pages
+        uses: actions/checkout@v4
+        if: always()
+        continue-on-error: true # Allow this step to fail if gh-pages doesn't exist yet
+        with:
+          ref: gh-pages
+          path: gh-pages-allure-site # Checkout gh-pages into a dedicated folder
+          
+      # Copy the history from the previously deployed report into the current allure-results
+      # This is crucial for Allure to generate the new report with historical data.
+      - name: Copy previous Allure history to current results
+        if: always() && github.ref == 'refs/heads/main' # Only copy history if on main branch, adjust as needed
+        run: |
+          if [ -d "gh-pages-allure-site/allure-history" ]; then # Check if the history directory exists
+            cp -r gh-pages-allure-site/allure-history/history allure-results/history || true # Copy history, '|| true' to prevent error if source is empty
+          else
+            echo "No previous Allure history found. Generating report without historical data for this run."
+          fi
+
+      - name: Generate Allure Report
+        uses: simple-elf/allure-report-action@v1.7
+        if: always()
+        id: allure-report
+        with:
+          allure_results: allure-results
+          allure_report: allure-report # This will be the temporary directory for the new report
+          allure_history: allure-history # This is the directory where Allure will put the history for the *next* run
+          keep_reports: 20 # Keep reports for 20 days or runs
+
+      # --- DEPLOYMENT FOR SEQUENTIAL FOLDERS ---
+      # This is where the main change needs to happen for sequential folders.
+      # You need to publish each report into a new, run-number-specific directory.
+      # And then manage the 'latest' symlink/redirect.
+
+      - name: Create 'latest' Allure Report Redirect
+        if: always()
+        run: |
+          # Create a new directory to stage the root-level files for gh-pages.
+          # This directory will hold the index.html and the history folder.
+          mkdir -p gh-pages-root-files
+          
+          # Create an index.html file that redirects to the most recent report URL.
+          echo '<meta http-equiv="refresh" content="0; url=${{ github.run_number }}/index.html">' > gh-pages-root-files/index.html
+          echo "Redirecting to latest Allure Report..." >> gh-pages-root-files/index.html
+
+          # Copy the newly generated history to a persistent location for the next run.
+          # The allure_report action creates a history subfolder, which needs to be
+          # copied back to the persistent location on gh-pages.
+          cp -r allure-report/history gh-pages-root-files/allure-history
+        
+      - name: Deploy Allure Report for this run
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-report
+          destination_dir: ${{ github.run_number }}
+          keep_files: true # Important to not delete the index.html or other folders
+      
+      - name: Deploy Root Files to gh-pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: gh-pages-root-files
+          keep_files: true # Important to merge and not delete the run-numbered folders
+
+      - name: Post the link to the report
+        if: always()
+        uses: Sibz/github-status-action@v1
+        with: 
+            authToken: ${{secrets.GITHUB_TOKEN}}
+            context: 'Test report'
+            state: 'success'
+            sha: ${{ github.sha }}
+            target_url: https://carlosmanzatto.github.io/playwright-01/${{ github.run_number }}

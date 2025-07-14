@@ -1,0 +1,34 @@
+name: CI Workflow - Playwright Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      Component:
+        type: choice
+        required: true
+        default: 'All'
+        options:
+          - 'All'
+          - 'FrontEnd'
+          - 'BackEnd'
+
+jobs:
+  # This job calls the reusable workflow
+  call-playwright-tests:
+    # Specify the path to your reusable workflow
+    # Replace <your-repo-owner>/<your-repo-name> if the reusable workflow is in a different repository
+    # Otherwise, for the same repository, use './.github/workflows/reusable-playwright-tests.yml'
+    uses: ./.github/workflows/reusable-playwright-tests.yml
+    with:
+      # Pass inputs to the reusable workflow
+      # github.event.inputs.Component will be available if triggered by workflow_dispatch
+      # 'All' is a fallback if not triggered by workflow_dispatch (e.g., push/pull_request)
+      component: ${{ github.event.inputs.Component || 'All' }}
+   # secrets:
+      # Pass secrets to the reusable workflow
+      # GITHUB_TOKEN is automatically available in most contexts
+   #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
