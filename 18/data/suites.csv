@@ -1,0 +1,5 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","1120","Working with APIs without mock","webkit","Thu Jul 17 15:46:05 GMT 2025","passed","Thu Jul 17 15:46:06 GMT 2025","Without mock","articles.spec.ts","",""
+"","6502","Create by front end and deleted by API","webkit","Thu Jul 17 15:45:58 GMT 2025","passed","Thu Jul 17 15:46:04 GMT 2025","Using Mock","articles.spec.ts","",""
+"","4092","Create by front end and deleted by API","chromium","Thu Jul 17 15:45:50 GMT 2025","passed","Thu Jul 17 15:45:54 GMT 2025","Using Mock","articles.spec.ts","",""
+"","753","Working with APIs without mock","chromium","Thu Jul 17 15:45:56 GMT 2025","passed","Thu Jul 17 15:45:57 GMT 2025","Without mock","articles.spec.ts","",""
